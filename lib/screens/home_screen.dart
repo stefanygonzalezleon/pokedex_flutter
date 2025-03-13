@@ -15,6 +15,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Pokemon> _pokemonList = [];
   List<Pokemon> _filteredPokemonList = [];
   bool _isLoading = true;
+  bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -41,8 +42,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _filterPokemon(String query) {
-    final filteredList = _pokemonList.where((pokemon) {
+  // Actualiza este método para buscar en la API
+  Future<void> _filterPokemon(String query) async {
+    if (query.isEmpty) {
+      setState(() {
+        _filteredPokemonList = _pokemonList;
+        _isSearching = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+    });
+
+    // Primero busca en la lista local
+    final localResults = _pokemonList.where((pokemon) {
       final pokemonIdString = pokemon.id.toString();
       final nameLower = pokemon.name.toLowerCase();
       final searchLower = query.toLowerCase();
@@ -51,11 +66,33 @@ class _HomeScreenState extends State<HomeScreen> {
           pokemonIdString.contains(searchLower);
     }).toList();
 
-    setState(() {
-      _filteredPokemonList = filteredList;
-    });
+    if (localResults.isNotEmpty) {
+      setState(() {
+        _filteredPokemonList = localResults;
+        _isSearching = false;
+      });
+      return;
+    }
+
+    // Si no hay resultados locales, busca en la API
+    try {
+      final results = await _pokemonService.searchPokemon(query);
+      setState(() {
+        _filteredPokemonList = results;
+        _isSearching = false;
+      });
+    } catch (e) {
+      setState(() {
+        _filteredPokemonList = [];
+        _isSearching = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se encontró ningún Pokémon: $e')),
+      );
+    }
   }
 
+  // En el método build, actualiza el contenido central para mostrar un indicador de carga durante la búsqueda
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -100,6 +137,10 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
+                    : _isSearching
+                    ? const Center(child: CircularProgressIndicator())
+                    : _filteredPokemonList.isEmpty
+                    ? const Center(child: Text('No Pokémon found'))
                     : GridView.builder(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
